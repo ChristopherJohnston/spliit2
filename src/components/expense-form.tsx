@@ -49,6 +49,7 @@ export function ExpenseForm({ group, expense, categories, onSubmit, onDelete }: 
     defaultValues: expense
       ? {
           title: expense.title,
+          expenseDate: (expense.expenseDate ?? new Date()).toISOString().substring(0, 10),
           amount: String(expense.amount / 100) as unknown as number, // hack
           category: expense.categoryId,
           paidBy: expense.paidById,
@@ -58,6 +59,7 @@ export function ExpenseForm({ group, expense, categories, onSubmit, onDelete }: 
       : searchParams.get('reimbursement')
       ? {
           title: 'Reimbursement',
+          expenseDate: new Date().toISOString().substring(0, 10),
           amount: String(
             (Number(searchParams.get('amount')) || 0) / 100,
           ) as unknown as number, // hack
@@ -66,7 +68,14 @@ export function ExpenseForm({ group, expense, categories, onSubmit, onDelete }: 
           paidFor: [searchParams.get('to') ?? undefined],
           isReimbursement: true,
         }
-      : { title: '', amount: 0, category: 1, paidFor: [], isReimbursement: false },
+      : {
+        title: '',
+        expenseDate: new Date().toISOString().substring(0, 10),
+        category: 1,
+        amount: 0,
+        paidFor: [],
+        isReimbursement: false
+      },
   })
 
   return (
@@ -99,7 +108,28 @@ export function ExpenseForm({ group, expense, categories, onSubmit, onDelete }: 
                 </FormItem>
               )}
             />
-
+            
+            <FormField
+              control={form.control}
+              name="expenseDate"
+              render={({ field }) => (
+                <FormItem className="sm:order-1">
+                  <FormLabel>Expense Date</FormLabel>
+                  <FormControl>
+                    <Input
+                      className="date-base"
+                      type="date"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Select the expense Date.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
             <FormField
               control={form.control}
               name="category"
