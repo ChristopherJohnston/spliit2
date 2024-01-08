@@ -54,7 +54,6 @@ export function ExpenseList({
                 </strong>
               </Fragment>
             ))}
-            {' '}on {expense.expenseDate.toISOString().substring(0,10)}
           </div>
         </div>
         <div className="flex items-center">
