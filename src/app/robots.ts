@@ -8,6 +8,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: '/groups/',
     },
-    sitemap: `${env.NEXT_PUBLIC_BASE_URL}/sitemap.xml`,
+    sitemap: `${env.NEXT_PUBLIC_BASE_URL}${env.NEXT_PUBLIC_BASE_PATH}/sitemap.xml`,
   }
 }

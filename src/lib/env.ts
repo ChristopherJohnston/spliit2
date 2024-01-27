@@ -11,6 +11,10 @@ const envSchema = z.object({
         ? `https://${process.env.VERCEL_URL}`
         : 'http://localhost:3000',
     ),
+  NEXT_PUBLIC_BASE_PATH: z
+    .string()
+    .optional()
+    .default(process.env.NEXT_PUBLIC_BASE_PATH ? process.env.NEXT_PUBLIC_BASE_PATH : '/')
 })
 
 export const env = envSchema.parse(process.env)
