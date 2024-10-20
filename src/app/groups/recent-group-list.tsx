@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { getGlobalGroups, getGroups } from '@/lib/api'
 import { Loader2 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import Link from 'next/link'
 import { PropsWithChildren, SetStateAction, useEffect, useState } from 'react'
 import { RecentGroupListCard } from './recent-group-list-card'
@@ -64,7 +65,12 @@ export type Props = {
   globalGroups: NonNullable<Awaited<ReturnType<typeof getGlobalGroups>>>
 }
 
+export type Props = {
+  globalGroups: NonNullable<Awaited<ReturnType<typeof getGlobalGroups>>>
+}
+
 export function RecentGroupList({ globalGroups }: Props) {
+  const t = useTranslations('Groups')
   const [state, setState] = useState<RecentGroupsState>({ status: 'pending' })
 
   function loadGroups(
@@ -100,8 +106,8 @@ export function RecentGroupList({ globalGroups }: Props) {
     return (
       <GroupsPage reload={() => loadGroups(globalGroups)}>
         <p>
-          <Loader2 className="w-4 m-4 mr-2 inline animate-spin" /> Loading
-          recent groups…
+          <Loader2 className="w-4 m-4 mr-2 inline animate-spin" />{' '}
+          {t('loadingRecent')}
         </p>
       </GroupsPage>
     )
@@ -111,12 +117,12 @@ export function RecentGroupList({ globalGroups }: Props) {
     return (
       <GroupsPage reload={() => loadGroups(globalGroups)}>
         <div className="text-sm space-y-2">
-          <p>You have not visited any group recently.</p>
+          <p>{t('NoRecent.description')}</p>
           <p>
             <Button variant="link" asChild className="-m-4">
-              <Link href={`/groups/create`}>Create one</Link>
+              <Link href={`/groups/create`}>{t('NoRecent.create')}</Link>
             </Button>{' '}
-            or ask a friend to send you the link to an existing one.
+            {t('NoRecent.orAsk')}
           </p>
         </div>
       </GroupsPage>
@@ -130,7 +136,7 @@ export function RecentGroupList({ globalGroups }: Props) {
     <GroupsPage reload={() => loadGroups(globalGroups)}>
       {starredGroupInfo.length > 0 && (
         <>
-          <h2 className="mb-2">Starred groups</h2>
+          <h2 className="mb-2">{t('starred')}</h2>
           <GroupList
             groups={starredGroupInfo}
             state={state}
@@ -141,14 +147,14 @@ export function RecentGroupList({ globalGroups }: Props) {
 
       {groupInfo.length > 0 && (
         <>
-          <h2 className="mt-6 mb-2">Recent groups</h2>
+          <h2 className="mt-6 mb-2">{t('recent')}</h2>
           <GroupList groups={groupInfo} state={state} setState={setState} />
         </>
       )}
 
       {archivedGroupInfo.length > 0 && (
         <>
-          <h2 className="mt-6 mb-2 opacity-50">Archived groups</h2>
+          <h2 className="mt-6 mb-2 opacity-50">{t('archived')}</h2>
           <div className="opacity-50">
             <GroupList
               groups={archivedGroupInfo}
@@ -202,18 +208,19 @@ function GroupsPage({
   children,
   reload,
 }: PropsWithChildren<{ reload: () => void }>) {
+  const t = useTranslations('Groups')
   return (
     <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <h1 className="font-bold text-2xl flex-1">
-          <Link href="/groups">My groups</Link>
+          <Link href="/groups">{t('myGroups')}</Link>
         </h1>
         <div className="flex gap-2">
           <AddGroupByUrlButton reload={reload} />
           <Button asChild>
             <Link href="/groups/create">
               {/* <Plus className="w-4 h-4 mr-2" /> */}
-              <>Create</>
+              {t('create')}
             </Link>
           </Button>
         </div>

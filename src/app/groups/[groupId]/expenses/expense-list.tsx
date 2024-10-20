@@ -4,32 +4,28 @@ import { getGroupExpensesAction } from '@/app/groups/[groupId]/expenses/expense-
 import { Button } from '@/components/ui/button'
 import { SearchBar } from '@/components/ui/search-bar'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Participant } from '@prisma/client'
+import { trpc } from '@/trpc/client'
 import dayjs, { type Dayjs } from 'dayjs'
+import { useTranslations } from 'next-intl'
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { forwardRef, useEffect, useMemo, useState } from 'react'
 import { useInView } from 'react-intersection-observer'
+import { useDebounce } from 'use-debounce'
+
+const PAGE_SIZE = 20
 
 type ExpensesType = NonNullable<
   Awaited<ReturnType<typeof getGroupExpensesAction>>
 >
 
-type Props = {
-  expensesFirstPage: ExpensesType
-  expenseCount: number
-  participants: Participant[]
-  currency: string
-  groupId: string
-}
-
 const EXPENSE_GROUPS = {
-  UPCOMING: 'Upcoming',
-  THIS_WEEK: 'This week',
-  EARLIER_THIS_MONTH: 'Earlier this month',
-  LAST_MONTH: 'Last month',
-  EARLIER_THIS_YEAR: 'Earlier this year',
-  LAST_YEAR: 'Last year',
-  OLDER: 'Older',
+  UPCOMING: 'upcoming',
+  THIS_WEEK: 'thisWeek',
+  EARLIER_THIS_MONTH: 'earlierThisMonth',
+  LAST_MONTH: 'lastMonth',
+  EARLIER_THIS_YEAR: 'earlierThisYear',
+  LAST_YEAR: 'lastYear',
+  OLDER: 'older',
 }
 
 function getExpenseGroup(date: Dayjs, today: Dayjs) {
@@ -60,23 +56,16 @@ function getGroupedExpensesByDate(expenses: ExpensesType) {
   }, {})
 }
 
-export function ExpenseList({
-  expensesFirstPage,
-  expenseCount,
-  currency,
-  participants,
-  groupId,
-}: Props) {
-  const firstLen = expensesFirstPage.length
+export function ExpenseList({ groupId }: { groupId: string }) {
+  const { data: groupData } = trpc.groups.get.useQuery({ groupId })
   const [searchText, setSearchText] = useState('')
-  const [dataIndex, setDataIndex] = useState(firstLen)
-  const [dataLen, setDataLen] = useState(firstLen)
-  const [hasMoreData, setHasMoreData] = useState(expenseCount > firstLen)
-  const [isFetching, setIsFetching] = useState(false)
-  const [expenses, setExpenses] = useState(expensesFirstPage)
-  const { ref, inView } = useInView()
+  const [debouncedSearchText] = useDebounce(searchText, 300)
+
+  const participants = groupData?.group.participants
 
   useEffect(() => {
+    if (!participants) return
+
     const activeUser = localStorage.getItem('newGroup-activeUser')
     const newUser = localStorage.getItem(`${groupId}-newUser`)
     if (activeUser || newUser) {
@@ -95,55 +84,80 @@ export function ExpenseList({
     }
   }, [groupId, participants])
 
+  return (
+    <>
+      <SearchBar onValueChange={(value) => setSearchText(value)} />
+      <ExpenseListForSearch
+        groupId={groupId}
+        searchText={debouncedSearchText}
+      />
+    </>
+  )
+}
+
+const ExpenseListForSearch = ({
+  groupId,
+  searchText,
+}: {
+  groupId: string
+  searchText: string
+}) => {
+  const utils = trpc.useUtils()
+
   useEffect(() => {
-    const fetchNextPage = async () => {
-      setIsFetching(true)
+    // Until we use tRPC more widely and can invalidate the cache on expense
+    // update, it's easier and safer to invalidate the cache on page load.
+    utils.groups.expenses.invalidate()
+  }, [utils])
 
-      const newExpenses = await getGroupExpensesAction(groupId, {
-        offset: dataIndex,
-        length: dataLen,
-      })
+  const t = useTranslations('Expenses')
+  const { ref: loadingRef, inView } = useInView()
 
-      if (newExpenses !== null) {
-        const exp = expenses.concat(newExpenses)
-        setExpenses(exp)
-        setHasMoreData(exp.length < expenseCount)
-        setDataIndex(dataIndex + dataLen)
-        setDataLen(Math.ceil(1.5 * dataLen))
-      }
+  const {
+    data,
+    isLoading: expensesAreLoading,
+    fetchNextPage,
+  } = trpc.groups.expenses.list.useInfiniteQuery(
+    { groupId, limit: PAGE_SIZE, filter: searchText },
+    { getNextPageParam: ({ nextCursor }) => nextCursor },
+  )
+  const expenses = data?.pages.flatMap((page) => page.expenses)
+  const hasMore = data?.pages.at(-1)?.hasMore ?? false
 
-      setTimeout(() => setIsFetching(false), 500)
-    }
+  const { data: groupData, isLoading: groupIsLoading } =
+    trpc.groups.get.useQuery({ groupId })
 
-    if (inView && hasMoreData && !isFetching) fetchNextPage()
-  }, [
-    dataIndex,
-    dataLen,
-    expenseCount,
-    expenses,
-    groupId,
-    hasMoreData,
-    inView,
-    isFetching,
-  ])
+  const isLoading =
+    expensesAreLoading || !expenses || groupIsLoading || !groupData
+
+  useEffect(() => {
+    if (inView && hasMore && !isLoading) fetchNextPage()
+  }, [fetchNextPage, hasMore, inView, isLoading])
 
   const groupedExpensesByDate = useMemo(
-    () => getGroupedExpensesByDate(expenses),
+    () => (expenses ? getGroupedExpensesByDate(expenses) : {}),
     [expenses],
   )
 
-  return expenses.length > 0 ? (
+  if (isLoading) return <ExpensesLoading />
+
+  if (expenses.length === 0)
+    return (
+      <p className="px-6 text-sm py-6">
+        {t('noExpenses')}{' '}
+        <Button variant="link" asChild className="-m-4">
+          <Link href={`/groups/${groupId}/expenses/create`}>
+            {t('createFirst')}
+          </Link>
+        </Button>
+      </p>
+    )
+
+  return (
     <>
-      <SearchBar onValueChange={(value) => setSearchText(value)} />
       {Object.values(EXPENSE_GROUPS).map((expenseGroup: string) => {
         let groupExpenses = groupedExpensesByDate[expenseGroup]
-        if (!groupExpenses) return null
-
-        groupExpenses = groupExpenses.filter(({ title }) =>
-          title.toLowerCase().includes(searchText.toLowerCase()),
-        )
-
-        if (groupExpenses.length === 0) return null
+        if (!groupExpenses || groupExpenses.length === 0) return null
 
         return (
           <div key={expenseGroup}>
@@ -152,44 +166,47 @@ export function ExpenseList({
                 'text-muted-foreground text-xs pl-4 sm:pl-6 py-1 font-semibold sticky top-16 bg-white dark:bg-[#1b1917]'
               }
             >
-              {expenseGroup}
+              {t(`Groups.${expenseGroup}`)}
             </div>
             {groupExpenses.map((expense) => (
               <ExpenseCard
                 key={expense.id}
                 expense={expense}
-                currency={currency}
+                currency={groupData.group.currency}
                 groupId={groupId}
               />
             ))}
           </div>
         )
       })}
-      {expenses.length < expenseCount &&
-        [0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="border-t flex justify-between items-center px-6 py-4 text-sm"
-            ref={i === 0 ? ref : undefined}
-          >
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-4 w-16 rounded-full" />
-              <Skeleton className="h-4 w-32 rounded-full" />
-            </div>
-            <div>
-              <Skeleton className="h-4 w-16 rounded-full" />
-            </div>
-          </div>
-        ))}
+      {hasMore && <ExpensesLoading ref={loadingRef} />}
     </>
-  ) : (
-    <p className="px-6 text-sm py-6">
-      Your group doesn’t contain any expense yet.{' '}
-      <Button variant="link" asChild className="-m-4">
-        <Link href={`/groups/${groupId}/expenses/create`}>
-          Create the first one
-        </Link>
-      </Button>
-    </p>
   )
 }
+
+const ExpensesLoading = forwardRef<HTMLDivElement>((_, ref) => {
+  return (
+    <div ref={ref}>
+      <Skeleton className="mx-4 sm:mx-6 mt-1 mb-2 h-3 w-32 rounded-full" />
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="flex justify-between items-start px-2 sm:px-6 py-4 text-sm gap-2"
+        >
+          <div className="flex-0 pl-2 pr-1">
+            <Skeleton className="h-4 w-4 rounded-full" />
+          </div>
+          <div className="flex-1 flex flex-col gap-2">
+            <Skeleton className="h-4 w-16 rounded-full" />
+            <Skeleton className="h-4 w-32 rounded-full" />
+          </div>
+          <div className="flex-0 flex flex-col gap-2 items-end mr-2 sm:mr-12">
+            <Skeleton className="h-4 w-16 rounded-full" />
+            <Skeleton className="h-4 w-20 rounded-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+})
+ExpensesLoading.displayName = 'ExpensesLoading'

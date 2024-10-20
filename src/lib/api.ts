@@ -22,6 +22,7 @@ export async function createGroup(groupFormValues: GroupFormValues) {
     data: {
       id: randomId(),
       name: groupFormValues.name,
+      information: groupFormValues.information,
       currency: groupFormValues.currency,
       participants: {
         createMany: {
@@ -237,6 +238,7 @@ export async function updateGroup(
     where: { id: groupId },
     data: {
       name: groupFormValues.name,
+      information: groupFormValues.information,
       currency: groupFormValues.currency,
       participants: {
         deleteMany: existingGroup.participants.filter(
@@ -277,7 +279,7 @@ export async function getCategories() {
 
 export async function getGroupExpenses(
   groupId: string,
-  options?: { offset: number; length: number },
+  options?: { offset?: number; length?: number; filter?: string },
 ) {
   return prisma.expense.findMany({
     select: {
@@ -297,7 +299,12 @@ export async function getGroupExpenses(
       splitMode: true,
       title: true,
     },
-    where: { groupId },
+    where: {
+      groupId,
+      title: options?.filter
+        ? { contains: options.filter, mode: 'insensitive' }
+        : undefined,
+    },
     orderBy: [{ expenseDate: 'desc' }, { createdAt: 'desc' }],
     skip: options && options.offset,
     take: options && options.length,
@@ -315,11 +322,34 @@ export async function getExpense(groupId: string, expenseId: string) {
   })
 }
 
-export async function getActivities(groupId: string) {
-  return prisma.activity.findMany({
+export async function getActivities(
+  groupId: string,
+  options?: { offset?: number; length?: number },
+) {
+  const activities = await prisma.activity.findMany({
     where: { groupId },
     orderBy: [{ time: 'desc' }],
+    skip: options?.offset,
+    take: options?.length,
   })
+
+  const expenseIds = activities
+    .map((activity) => activity.expenseId)
+    .filter(Boolean)
+  const expenses = await prisma.expense.findMany({
+    where: {
+      groupId,
+      id: { in: expenseIds },
+    },
+  })
+
+  return activities.map((activity) => ({
+    ...activity,
+    expense:
+      activity.expenseId !== null
+        ? expenses.find((expense) => expense.id === activity.expenseId)
+        : undefined,
+  }))
 }
 
 export async function getExpenseActivity(expenseId: string) {
